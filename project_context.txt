@@ -1,0 +1,1757 @@
+Project file structure:
+=======================
+Test/
+    app.py
+    nova_analysis.py
+    requirements.txt
+    testweb/
+        README.md
+        app.js
+        data.json
+        index.html
+        style.css
+    utils/
+        data_loader.py
+        ui_helpers.py
+    pages/
+        1_overview.py
+        2_sales_revenue.py
+        3_reviews.py
+        4_categories.py
+        5_geographic.py
+
+
+File Contents:
+===============
+
+
+--- FILE: app.py ---
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+
+st.set_page_config(page_title="Amazon Dashboard", layout="wide")
+
+@st.cache_data
+def load_data():
+    file_path = '/Users/hassanmulla/Downloads/NOVA_Phase2/Test/amazon.csv'
+    df = pd.read_csv(file_path)
+    df['discounted_price_num'] = pd.to_numeric(df['discounted_price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['actual_price_num'] = pd.to_numeric(df['actual_price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['discount_pct_num'] = pd.to_numeric(df['discount_percentage'].astype(str).str.replace('%', '', regex=True), errors='coerce')
+    df['rating_count_num'] = pd.to_numeric(df['rating_count'].astype(str).str.replace(',', '', regex=True), errors='coerce')
+    df['rating_num'] = pd.to_numeric(df['rating'], errors='coerce')
+    return df
+
+df = load_data()
+
+st.sidebar.header("Options")
+cats = st.sidebar.multiselect("Category", df['category'].unique(), default=df['category'].unique()[:5])
+rat_min, rat_max = st.sidebar.slider("Rating", 0.0, 5.0, (0.0, 5.0), 0.1)
+p_min = float(df['discounted_price_num'].min())
+p_max = float(df['discounted_price_num'].max())
+pri_min, pri_max = st.sidebar.slider("Discounted Price", p_min, p_max, (p_min, p_max))
+
+data = df[(df['category'].isin(cats)) & (df['rating_num'] >= rat_min) & (df['rating_num'] <= rat_max) & (df['discounted_price_num'] >= pri_min) & (df['discounted_price_num'] <= pri_max)]
+
+st.title("Amazon Dataset Dashboard")
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Products", len(data))
+k2.metric("Avg Rating", round(data['rating_num'].mean(), 2))
+k3.metric("Avg Discount %", round(data['discount_pct_num'].mean(), 2))
+k4.metric("Categories", data['category'].nunique())
+
+c1, c2 = st.columns(2)
+top_cats = data['category'].value_counts().head(10).reset_index()
+top_cats.columns = ['category', 'count']
+fig1 = px.bar(top_cats, x='category', y='count', title="Top 10 Categories")
+c1.plotly_chart(fig1, use_container_width=True)
+
+cat_sum = data.groupby('category')['discounted_price_num'].sum().reset_index().sort_values('discounted_price_num', ascending=False).head(10)
+fig2 = px.bar(cat_sum, x='category', y='discounted_price_num', title="Top 10 Categories by Value")
+c2.plotly_chart(fig2, use_container_width=True)
+
+c3, c4 = st.columns(2)
+fig3 = px.histogram(data, x='rating_num', nbins=10, title="Rating Distribution")
+c3.plotly_chart(fig3, use_container_width=True)
+
+fig4 = px.scatter(data, x='actual_price_num', y='discounted_price_num', color='rating_num', title="Actual vs Discounted Price", opacity=0.6)
+c4.plotly_chart(fig4, use_container_width=True)
+
+nums = ['actual_price_num', 'discounted_price_num', 'discount_pct_num', 'rating_num', 'rating_count_num']
+corr = data[nums].corr()
+fig5 = px.imshow(corr, text_auto=True, aspect="auto", title="Correlation Matrix")
+st.plotly_chart(fig5, use_container_width=True)
+
+st.subheader("Data Preview")
+st.dataframe(data)
+
+st.sidebar.markdown("---")
+st.sidebar.caption("Data Source: Amazon Dataset")
+if st.sidebar.button("Refresh"):
+    st.rerun()
+
+st.markdown("---")
+st.caption("Data Source: Amazon Dataset | Built with Streamlit")
+
+--- FILE: nova_analysis.py ---
+
+import pandas as pd
+import numpy as np
+
+def load_and_clean(file_path):
+    df = pd.read_csv(file_path)
+    
+    def clean_price(series):
+        return pd.to_numeric(series.astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    
+    def clean_pct(series):
+        return pd.to_numeric(series.astype(str).str.replace('%', '', regex=True), errors='coerce')
+    
+    def clean_count(series):
+        return pd.to_numeric(series.astype(str).str.replace(',', '', regex=True), errors='coerce')
+    
+    df['discounted_price_num'] = clean_price(df['discounted_price'])
+    df['actual_price_num'] = clean_price(df['actual_price'])
+    df['discount_pct_num'] = clean_pct(df['discount_percentage'])
+    df['rating_count_num'] = clean_count(df['rating_count'])
+    df['rating_num'] = pd.to_numeric(df['rating'], errors='coerce')
+    
+    return df
+
+def analyze(file_path):
+    df = load_and_clean(file_path)
+    
+    print("=== DATASET SHAPE ===")
+    print(f"Rows: {df.shape[0]} | Columns: {df.shape[1]}\n")
+    
+    print("=== MISSING VALUES ===")
+    print(df.isnull().sum().sort_values(ascending=False))
+    print()
+    
+    numeric_cols = ['actual_price_num', 'discounted_price_num', 'discount_pct_num', 'rating_num', 'rating_count_num']
+    
+    print("=== DESCRIPTIVE STATISTICS ===")
+    print(df[numeric_cols].describe().T)
+    print()
+    
+    print("=== SKEWNESS & KURTOSIS ===")
+    print(df[numeric_cols].agg(['skew', 'kurtosis']))
+    print()
+    
+    print("=== CORRELATION MATRIX ===")
+    print(df[numeric_cols].corr())
+    print()
+    
+    print("=== TOP 10 CATEGORIES ===")
+    print(df['category'].value_counts().head(10))
+    print()
+    
+    print("=== RATING DISTRIBUTION ===")
+    print(df['rating_num'].value_counts().sort_index())
+    print()
+    
+    print("=== DUPLICATE PRODUCT_IDS ===")
+    print(df['product_id'].duplicated().sum())
+    print()
+    
+    print("=== ZERO/NEGATIVE PRICE ROWS ===")
+    print(f"Actual price <= 0: {(df['actual_price_num'] <= 0).sum()}")
+    print(f"Discounted price <= 0: {(df['discounted_price_num'] <= 0).sum()}")
+    print()
+    
+    print("=== AVG RATING BY DISCOUNT BUCKET ===")
+    df['discount_bucket'] = pd.cut(df['discount_pct_num'], bins=[0, 20, 40, 60, 80, 100])
+    print(df.groupby('discount_bucket')['rating_num'].mean())
+    print()
+    
+    return df
+
+if __name__ == "__main__":
+    analyze('/Users/hassanmulla/Downloads/NOVA_Phase2/Test/amazon.csv')
+
+--- FILE: requirements.txt ---
+
+streamlit
+pandas
+numpy
+plotly
+
+--- FILE: testweb/README.md ---
+
+# Personal Finance Dashboard
+
+A lightweight, responsive single-page dashboard for visualizing personal finance data. Features a glassmorphism UI, dark/light theme support, and interactive charts.
+
+## File Layout
+
+| File | Purpose |
+|------|---------|
+| `index.html` | Main page scaffold |
+| `style.css` | Global styles and glassmorphism palette |
+| `app.js` | Application logic and chart handling |
+| `data.json` | Sample finance data |
+
+## Quick Start
+
+Open `index.html` in any modern browser:
+
+```bash
+open index.html
+```
+
+No build step is required.
+
+## Features
+
+- **Overview Cards**: Monthly balance, total savings, and expenses.
+- **Charts**: Expense breakdown (pie), income trend (line), category comparison (bar).
+- **Transactions**: View all transactions in a sortable table.
+- **Add Transaction**: Modal form to append new entries.
+- **Export CSV**: Download transaction data.
+- **Theme Toggle**: Persisted dark/light mode.
+
+## Testing Checklist
+
+### Unit Tests
+- [ ] Theme toggle updates CSS variables and `localStorage`.
+- [ ] Refresh button re-fetches and re-renders data.
+- [ ] Export CSV generates a valid downloadable file.
+- [ ] Add Transaction form appends to the dataset and updates UI.
+
+### End-to-End Tests
+- [ ] Dashboard renders all charts and cards on load.
+- [ ] Clicking **Add Transaction** opens the modal.
+- [ ] Submitting a new transaction updates the table and charts.
+- [ ] Theme change persists after page refresh.
+
+## Build Notes
+
+All assets are static. For future development, data can be swapped from `data.json` to an API endpoint in `app.js`.
+
+--- FILE: testweb/app.js ---
+
+(function() {
+  const root = document.documentElement;
+  const themeToggle = document.getElementById('theme-toggle');
+  const refreshBtn = document.getElementById('refresh-btn');
+  const exportBtn = document.getElementById('export-btn');
+  const addTransactionBtn = document.getElementById('add-transaction-btn');
+  const modal = document.getElementById('modal');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const transactionForm = document.getElementById('transaction-form');
+  const txTableBody = document.querySelector('#transaction-table tbody');
+  let appData = null;
+  let chartInstances = {};
+  const STORAGE_KEY = 'pfd_extra_transactions';
+
+  function formatCurrency(value) {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+  }
+
+  function getExtraTransactions() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveExtraTransaction(transaction) {
+    const extra = getExtraTransactions();
+    extra.push(transaction);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(extra));
+  }
+
+  async function fetchData() {
+    const res = await fetch('data.json');
+    const data = await res.json();
+    const extra = getExtraTransactions();
+    if (!Array.isArray(data.transactions)) data.transactions = [];
+    data.transactions = data.transactions.concat(extra);
+    return data;
+  }
+
+  function computeMetrics(data) {
+    const txs = Array.isArray(data.transactions) ? data.transactions : [];
+    const income = txs.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+    const expenses = txs.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
+    const balance = income - expenses;
+    const savings = typeof data.savings === 'number' ? data.savings : 0;
+    return { income, expenses, balance, savings };
+  }
+
+  function renderCards(data) {
+    const { income, expenses, balance, savings } = computeMetrics(data);
+    document.getElementById('monthly-balance').textContent = formatCurrency(balance);
+    document.getElementById('total-savings').textContent = formatCurrency(savings);
+    document.getElementById('total-expenses').textContent = formatCurrency(expenses);
+    document.getElementById('total-income').textContent = formatCurrency(income);
+  }
+
+  function getChartColors() {
+    const isDark = root.classList.contains('dark');
+    return {
+      text: isDark ? '#94a3b8' : '#475569',
+      grid: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+      tooltipBg: isDark ? '#1e293b' : '#ffffff',
+      tooltipText: isDark ? '#f8fafc' : '#0f172a',
+    };
+  }
+
+  function destroyChart(key) {
+    if (chartInstances[key]) {
+      chartInstances[key].destroy();
+      delete chartInstances[key];
+    }
+  }
+
+  function renderCharts(data) {
+    const colors = getChartColors();
+    Chart.defaults.color = colors.text;
+    Chart.defaults.borderColor = colors.grid;
+
+    const expenseData = Array.isArray(data.expenseBreakdown) ? data.expenseBreakdown : [];
+    const pieCtx = document.getElementById('expense-pie').getContext('2d');
+    destroyChart('pie');
+    chartInstances['pie'] = new Chart(pieCtx, {
+      type: 'doughnut',
+      data: {
+        labels: expenseData.map(d => d.category),
+        datasets: [{
+          data: expenseData.map(d => d.amount),
+          backgroundColor: ['#0ea5e9','#8b5cf6','#ec4899','#f59e0b','#10b981','#ef4444'],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: {
+            backgroundColor: colors.tooltipBg,
+            titleColor: colors.tooltipText,
+            bodyColor: colors.tooltipText,
+            borderColor: colors.grid,
+            borderWidth: 1
+          }
+        }
+      }
+    });
+
+    const incomeData = Array.isArray(data.monthlyIncome) ? data.monthlyIncome : [];
+    const lineCtx = document.getElementById('income-line').getContext('2d');
+    destroyChart('line');
+    chartInstances['line'] = new Chart(lineCtx, {
+      type: 'line',
+      data: {
+        labels: incomeData.map(d => d.month),
+        datasets: [{
+          label: 'Income',
+          data: incomeData.map(d => d.amount),
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 4,
+          pointHoverRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, grid: { color: colors.grid } }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: colors.tooltipBg,
+            titleColor: colors.tooltipText,
+            bodyColor: colors.tooltipText,
+            borderColor: colors.grid,
+            borderWidth: 1
+          }
+        }
+      }
+    });
+
+    const catData = Array.isArray(data.categoryComparison) ? data.categoryComparison : [];
+    const barCtx = document.getElementById('category-bar').getContext('2d');
+    destroyChart('bar');
+    chartInstances['bar'] = new Chart(barCtx, {
+      type: 'bar',
+      data: {
+        labels: catData.map(d => d.category),
+        datasets: [
+          {
+            label: 'Budgeted',
+            data: catData.map(d => d.budgeted),
+            backgroundColor: '#0ea5e9',
+            borderRadius: 6
+          },
+          {
+            label: 'Actual',
+            data: catData.map(d => d.actual),
+            backgroundColor: '#ec4899',
+            borderRadius: 6
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, grid: { color: colors.grid } }
+        },
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: {
+            backgroundColor: colors.tooltipBg,
+            titleColor: colors.tooltipText,
+            bodyColor: colors.tooltipText,
+            borderColor: colors.grid,
+            borderWidth: 1
+          }
+        }
+      }
+    });
+  }
+
+  function renderTransactions(transactions) {
+    txTableBody.innerHTML = '';
+    const txs = Array.isArray(transactions) ? transactions : [];
+    const sorted = [...txs].sort((a, b) => new Date(b.date) - new Date(a.date));
+    sorted.forEach(t => {
+      const tr = document.createElement('tr');
+      const amountClass = t.amount < 0 ? 'negative' : 'positive';
+      tr.innerHTML = `
+        <td>${t.date}</td>
+        <td>${t.category}</td>
+        <td>${t.description}</td>
+        <td class="numeric ${amountClass}">${formatCurrency(t.amount)}</td>
+      `;
+      txTableBody.appendChild(tr);
+    });
+  }
+
+  function exportCSV() {
+    if (!appData || !Array.isArray(appData.transactions)) return;
+    const headers = ['Date', 'Category', 'Description', 'Amount'];
+    const rows = appData.transactions.map(t => [t.date, t.category, `"${(t.description || '').replace(/"/g, '""')}"`, t.amount]);
+    const csv = [
+      headers.join(',''),
+      ...rows.map(r => r.join(','))
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'transactions.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function updateToggleUI() {
+    const isDark = root.classList.contains('dark');
+    if (themeToggle) {
+      themeToggle.innerHTML = isDark
+        ? `<span class="toggle-icon">☀️</span> <span class="toggle-text">Light Mode</span>`
+        : `<span class="toggle-icon">🌙</span> <span class="toggle-text">Dark Mode</span>`;
+    }
+  }
+
+  function toggleTheme() {
+    const isDark = root.classList.toggle('dark');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    updateToggleUI();
+    if (appData) {
+      renderCharts(appData);
+    }
+  }
+
+  async function loadData() {
+    try {
+      appData = await fetchData();
+      renderCards(appData);
+      renderCharts(appData);
+      renderTransactions(appData.transactions);
+    } catch (e) {
+      console.error('Failed to load data', e);
+    }
+  }
+
+  function initTheme() {
+    const saved = localStorage.getItem('theme') || 'light';
+    if (saved === 'dark') root.classList.add('dark');
+    updateToggleUI();
+  }
+
+  // Event Listeners
+  if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
+  if (refreshBtn) refreshBtn.addEventListener('click', loadData);
+  if (exportBtn) exportBtn.addEventListener('click', exportCSV);
+
+  if (addTransactionBtn) {
+    addTransactionBtn.addEventListener('click', () => {
+      modal.classList.remove('hidden');
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+      transactionForm.reset();
+    });
+  }
+
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.add('hidden');
+        transactionForm.reset();
+      }
+    });
+  }
+
+  if (transactionForm) {
+    transactionForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const date = document.getElementById('date').value;
+      const category = document.getElementById('category').value;
+      const description = document.getElementById('description').value;
+      const amount = parseFloat(document.getElementById('amount').value);
+      if (!date || !category || isNaN(amount)) return;
+      const newTx = { date, category, description, amount };
+      saveExtraTransaction(newTx);
+      if (!appData) appData = { transactions: [] };
+      if (!Array.isArray(appData.transactions)) appData.transactions = [];
+      appData.transactions.push(newTx);
+      renderCards(appData);
+      renderTransactions(appData.transactions);
+      modal.classList.add('hidden');
+      transactionForm.reset();
+    });
+  }
+
+  initTheme();
+  loadData();
+})();
+
+--- FILE: testweb/data.json ---
+
+{
+  "savings": 15420.5,
+  "monthlyIncome": [
+    { "month": "Jan", "amount": 5200 },
+    { "month": "Feb", "amount": 5200 },
+    { "month": "Mar", "amount": 5500 },
+    { "month": "Apr", "amount": 5800 },
+    { "month": "May", "amount": 5500 },
+    { "month": "Jun", "amount": 6000 }
+  ],
+  "expenseBreakdown": [
+    { "category": "Housing", "amount": 1250 },
+    { "category": "Food", "amount": 650 },
+    { "category": "Transport", "amount": 420 },
+    { "category": "Utilities", "amount": 310 },
+    { "category": "Entertainment", "amount": 220 },
+    { "category": "Healthcare", "amount": 180 }
+  ],
+  "categoryComparison": [
+    { "category": "Housing", "budgeted": 1200, "actual": 1250 },
+    { "category": "Food", "budgeted": 600, "actual": 650 },
+    { "category": "Transport", "budgeted": 400, "actual": 420 },
+    { "category": "Utilities", "budgeted": 300, "actual": 310 },
+    { "category": "Entertainment", "budgeted": 200, "actual": 220 },
+    { "category": "Healthcare", "budgeted": 150, "actual": 180 }
+  ],
+  "transactions": [
+    { "date": "2024-05-01", "category": "Salary", "description": "Monthly Salary", "amount": 5500 },
+    { "date": "2024-05-02", "category": "Housing", "description": "Rent Payment", "amount": -1250 },
+    { "date": "2024-05-03", "category": "Food", "description": "Grocery Store", "amount": -154.3 },
+    { "date": "2024-05-05", "category": "Transport", "description": "Gas Station", "amount": -45 },
+    { "date": "2024-05-07", "category": "Utilities", "description": "Electric Bill", "amount": -110.5 },
+    { "date": "2024-05-08", "category": "Food", "description": "Restaurant", "amount": -62.4 },
+    { "date": "2024-05-10", "category": "Entertainment", "description": "Movie Night", "amount": -32 },
+    { "date": "2024-05-12", "category": "Transport", "description": "Car Insurance", "amount": -125 },
+    { "date": "2024-05-14", "category": "Healthcare", "description": "Pharmacy", "amount": -28.5 },
+    { "date": "2024-05-15", "category": "Food", "description": "Grocery Store", "amount": -88.2 },
+    { "date": "2024-05-18", "category": "Utilities", "description": "Internet Bill", "amount": -60 },
+    { "date": "2024-05-20", "category": "Salary", "description": "Freelance Project", "amount": 800 },
+    { "date": "2024-05-22", "category": "Entertainment", "description": "Concert Tickets", "amount": -85 },
+    { "date": "2024-05-25", "category": "Housing", "description": "HOA Fees", "amount": -150 },
+    { "date": "2024-05-28", "category": "Food", "description": "Grocery Store", "amount": -121.5 }
+  ]
+}
+
+--- FILE: testweb/index.html ---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Personal Finance Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar glass">
+      <div class="sidebar-brand">
+        <h2>FinDash</h2>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#overview" class="active">Overview</a>
+        <a href="#transactions">Transactions</a>
+        <a href="#budget">Budget</a>
+      </nav>
+      <div class="sidebar-footer">
+        <button id="theme-toggle" class="btn-toggle" aria-label="Toggle Theme">
+          <span class="toggle-icon">🌙</span>
+          <span class="toggle-text">Dark Mode</span>
+        </button>
+      </div>
+    </aside>
+
+    <main>
+      <header class="page-header glass">
+        <h1>Dashboard Overview</h1>
+        <div class="actions">
+          <button id="refresh-btn" class="btn btn-secondary">Refresh</button>
+          <button id="export-btn" class="btn btn-secondary">Export CSV</button>
+          <button id="add-transaction-btn" class="btn btn-primary">Add Transaction</button>
+        </div>
+      </header>
+
+      <section id="overview" class="section">
+        <div class="cards">
+          <article class="card glass">
+            <div class="card-header">
+              <h3>Monthly Balance</h3>
+              <span class="card-icon">💰</span>
+            </div>
+            <p id="monthly-balance" class="card-value">$0.00</p>
+            <p class="card-sub">Net income minus expenses</p>
+          </article>
+          <article class="card glass">
+            <div class="card-header">
+              <h3>Total Savings</h3>
+              <span class="card-icon">🏦</span>
+            </div>
+            <p id="total-savings" class="card-value">$0.00</p>
+            <p class="card-sub">Current reserves</p>
+          </article>
+          <article class="card glass">
+            <div class="card-header">
+              <h3>Total Expenses</h3>
+              <span class="card-icon">💸</span>
+            </div>
+            <p id="total-expenses" class="card-value">$0.00</p>
+            <p class="card-sub">This period spend</p>
+          </article>
+          <article class="card glass">
+            <div class="card-header">
+              <h3>Total Income</h3>
+              <span class="card-icon">📈</span>
+            </div>
+            <p id="total-income" class="card-value">$0.00</p>
+            <p class="card-sub">Earnings to date</p>
+          </article>
+        </div>
+
+        <div class="charts">
+          <div class="chart-container glass">
+            <h3>Expense Breakdown</h3>
+            <div class="chart-wrap">
+              <canvas id="expense-pie"></canvas>
+            </div>
+          </div>
+          <div class="chart-container glass">
+            <h3>Income Trend</h3>
+            <div class="chart-wrap">
+              <canvas id="income-line"></canvas>
+            </div>
+          </div>
+          <div class="chart-container glass">
+            <h3>Category Comparison</h3>
+            <div class="chart-wrap">
+              <canvas id="category-bar"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="transactions" class="section">
+        <h2>Transactions</h2>
+        <div class="table-wrap glass">
+          <table id="transaction-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th class="numeric">Amount</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer class="page-footer">
+        <p>&copy; Personal Finance Dashboard v1.0</p>
+      </footer>
+    </main>
+  </div>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-content glass">
+      <h2>Add Transaction</h2>
+      <form id="transaction-form">
+        <label for="date">Date</label>
+        <input type="date" id="date" required>
+        <label for="category">Category</label>
+        <input type="text" id="category" required>
+        <label for="description">Description</label>
+        <input type="text" id="description" required>
+        <label for="amount">Amount (negative for expense)</label>
+        <input type="number" id="amount" step="0.01" required>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Save</button>
+          <button type="button" id="cancel-btn" class="btn btn-secondary">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
+--- FILE: testweb/style.css ---
+
+:root {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --text: #0f172a;
+  --text-secondary: #64748b;
+  --primary: #0ea5e9;
+  --primary-hover: #0284c7;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.06);
+  --card-bg: rgba(255, 255, 255, 0.8);
+  --radius: 1rem;
+}
+
+html.dark {
+  --bg: #020617;
+  --surface: #0f172a;
+  --text: #f8fafc;
+  --text-secondary: #94a3b8;
+  --primary: #38bdf8;
+  --primary-hover: #0ea5e9;
+  --glass-bg: rgba(30, 41, 59, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  --card-bg: rgba(30, 41, 59, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+  transition: color 0.3s ease;
+  background: radial-gradient(circle at 50% 0%, #e0f2fe, #f8fafc 55%);
+}
+
+html.dark body {
+  background: radial-gradient(circle at 50% 0%, #1e293b, #020617 55%);
+}
+
+.app {
+  display: flex;
+  min-height: 100vh;
+}
+
+.glass {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 260px;
+  position: fixed;
+  top: 24px;
+  left: 24px;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  padding: 2rem;
+  z-index: 100;
+}
+
+.sidebar-brand h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 2rem;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.sidebar-nav a {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: background 0.2s, color 0.2s;
+}
+
+.sidebar-nav a:hover,
+.sidebar-nav a.active {
+  background: rgba(14, 165, 233, 0.1);
+  color: var(--primary);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+}
+
+/* Main */
+main {
+  margin-left: 308px;
+  padding: 24px 32px 32px;
+  flex: 1;
+  max-width: calc(100vw - 308px);
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.75rem;
+  margin-bottom: 1.5rem;
+  border-radius: var(--radius);
+}
+
+.page-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.2s, background 0.2s;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.25);
+}
+
+.btn-secondary {
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--glass-border);
+}
+
+.btn-secondary:hover {
+  background: var(--glass-border);
+}
+
+.btn-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s, color 0.2s;
+}
+
+.btn-toggle:hover {
+  background: var(--glass-border);
+  color: var(--text);
+}
+
+/* Cards */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.card {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 48px rgba(0,0,0,0.1);
+}
+
+html.dark .card:hover {
+  box-shadow: 0 12px 48px rgba(0,0,0,0.3);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-header h3 {
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.card-icon {
+  font-size: 1.25rem;
+}
+
+.card-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.card-sub {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+/* Charts */
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.chart-container {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-container h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.chart-wrap {
+  position: relative;
+  height: 280px;
+  width: 100%;
+}
+
+/* Section */
+.section h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+/* Table */
+.table-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+thead {
+  border-bottom: 1px solid var(--glass-border);
+}
+
+th, td {
+  padding: 0.9rem 1.25rem;
+  text-align: left;
+}
+
+th {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.numeric {
+  text-align: right;
+}
+
+tr:not(:last-child) td {
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.positive {
+  color: var(--success);
+}
+
+.negative {
+  color: var(--danger);
+}
+
+/* Modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 6, 23, 0.45);
+  backdrop-filter: blur(4px);
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.2s, visibility 0.2s;
+}
+
+.modal.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 420px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.modal-content h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.modal-content form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-content label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.modal-content input {
+  width: 100%;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 0.6rem;
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 0.9375rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.modal-content input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+/* Footer */
+.page-footer {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 240px;
+  }
+  main {
+    margin-left: 264px;
+    max-width: calc(100vw - 264px);
+  }
+}
+
+@media (max-width: 768px) {
+  .app {
+    flex-direction: column;
+  }
+  .sidebar {
+    position: relative;
+    top: auto;
+    left: auto;
+    bottom: auto;
+    width: 100%;
+    border-radius: 0;
+  }
+  main {
+    margin-left: 0;
+    max-width: 100%;
+    padding: 1rem;
+  }
+  .charts {
+    grid-template-columns: 1fr;
+  }
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+}
+
+--- FILE: utils/data_loader.py ---
+
+import pandas as pd
+import numpy as np
+
+
+def clean_price(series):
+    return pd.to_numeric(series.astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+
+
+def clean_pct(series):
+    return pd.to_numeric(series.astype(str).str.replace('%', '', regex=True), errors='coerce')
+
+
+def clean_count(series):
+    return pd.to_numeric(series.astype(str).str.replace(',', '', regex=True), errors='coerce')
+
+
+def load_and_clean(file_path):
+    df = pd.read_csv(file_path)
+    
+    df['discounted_price_num'] = clean_price(df['discounted_price'])
+    df['actual_price_num'] = clean_price(df['actual_price'])
+    df['discount_pct_num'] = clean_pct(df['discount_percentage'])
+    df['rating_count_num'] = clean_count(df['rating_count'])
+    df['rating_num'] = pd.to_numeric(df['rating'], errors='coerce')
+    df['revenue_proxy'] = df['discounted_price_num'] * df['rating_count_num']
+    
+    date_candidates = ['date', 'Date', 'timestamp', 'Timestamp', 'sales_date']
+    for col in date_candidates:
+        if col in df.columns:
+            df['parsed_date'] = pd.to_datetime(df[col], errors='coerce')
+            break
+    else:
+        df['parsed_date'] = pd.NaT
+    
+    if 'country' not in df.columns:
+        df['country'] = 'Unknown'
+    if 'latitude' not in df.columns:
+        df['latitude'] = np.nan
+    if 'longitude' not in df.columns:
+        df['longitude'] = np.nan
+    
+    return df
+
+--- FILE: utils/ui_helpers.py ---
+
+import streamlit as st
+import plotly.express as px
+import pandas as pd
+
+
+def render_sidebar_filters(df):
+    st.sidebar.header("Options")
+    cats = st.sidebar.multiselect("Category", options=df['category'].unique(), default=list(df['category'].unique()[:5]))
+    rat_min, rat_max = st.sidebar.slider("Rating", 0.0, 5.0, (0.0, 5.0), 0.1)
+    p_min = float(df['discounted_price_num'].min())
+    p_max = float(df['discounted_price_num'].max())
+    pri_min, pri_max = st.sidebar.slider("Discounted Price", p_min, p_max, (p_min, p_max))
+    return cats, rat_min, rat_max, pri_min, pri_max
+
+
+def filter_data(df, cats, rat_min, rat_max, pri_min, pri_max):
+    return df[
+        df['category'].isin(cats) &
+        (df['rating_num'] >= rat_min) &
+        (df['rating_num'] <= rat_max) &
+        (df['discounted_price_num'] >= pri_min) &
+        (df['discounted_price_num'] <= pri_max)
+    ].copy()
+
+
+def render_metrics(data):
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
+    k1.metric("Products", len(data))
+    k2.metric("Avg Rating", round(data['rating_num'].mean(), 2) if len(data) > 0 else 0.0)
+    k3.metric("Avg Discount %", round(data['discount_pct_num'].mean(), 2) if len(data) > 0 else 0.0)
+    k4.metric("Categories", data['category'].nunique())
+    k5.metric("Total Rev Proxy", f"{data['revenue_proxy'].sum():,.0f}" if len(data) > 0 and 'revenue_proxy' in data.columns else "0")
+    k6.metric("Sales Volume Proxy", f"{data['rating_count_num'].sum():,.0f}" if len(data) > 0 and 'rating_count_num' in data.columns else "0")
+
+
+def render_top_categories(data):
+    top_cats = data['category'].value_counts().head(10).reset_index()
+    top_cats.columns = ['category', 'count']
+    fig = px.bar(top_cats, x='category', y='count', title="Top 10 Categories")
+    return fig
+
+
+def render_revenue_chart(data):
+    if 'parsed_date' in data.columns and pd.api.types.is_datetime64_any_dtype(data['parsed_date']) and data['parsed_date'].notna().any():
+        ts = data.groupby(data['parsed_date'].dt.to_period('M').astype(str))['revenue_proxy'].sum().reset_index()
+        ts.columns = ['month', 'revenue']
+        fig = px.line(ts, x='month', y='revenue', title="Revenue Trend Over Time")
+    else:
+        cat_rev = data.groupby('category')['revenue_proxy'].sum().reset_index().sort_values('revenue_proxy', ascending=False).head(10)
+        fig = px.bar(cat_rev, x='category', y='revenue_proxy', title="Revenue by Category (Top 10)")
+    return fig
+
+
+def render_rating_distribution(data):
+    fig = px.histogram(data, x='rating_num', nbins=10, title="Rating Distribution")
+    return fig
+
+
+def render_price_scatter(data):
+    fig = px.scatter(data, x='actual_price_num', y='discounted_price_num', color='rating_num', title="Actual vs Discounted Price", opacity=0.6)
+    return fig
+
+
+def render_correlation_heatmap(data):
+    nums = ['actual_price_num', 'discounted_price_num', 'discount_pct_num', 'rating_num', 'rating_count_num']
+    available_nums = [n for n in nums if n in data.columns]
+    fig = px.imshow(data[available_nums].corr(), text_auto=True, aspect="auto", title="Correlation Matrix")
+    return fig
+
+
+def render_geo_distribution(data):
+    map_data = data.dropna(subset=['latitude', 'longitude'])
+    if not map_data.empty:
+        fig = px.scatter_geo(map_data, lat='latitude', lon='longitude', color='rating_num', title="Geographic Distribution")
+    else:
+        geo = data['country'].value_counts().head(10).reset_index()
+        geo.columns = ['country', 'count']
+        fig = px.bar(geo, x='country', y='count', title="Geographic Distribution (Top Countries)")
+    return fig
+
+
+def render_data_preview(data):
+    st.subheader("Data Preview")
+    st.dataframe(data)
+
+
+def render_footer():
+    st.sidebar.markdown("---")
+    st.sidebar.caption("Data Source: Amazon Dataset")
+    if st.sidebar.button("Refresh"):
+        st.rerun()
+    st.markdown("---")
+    st.caption("Data Source: Amazon Dataset | Built with Streamlit")
+
+--- FILE: pages/1_overview.py ---
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+
+@st.cache_data
+def load_data():
+    file_path = 'amazon.csv'
+    df = pd.read_csv(file_path)
+    df['discounted_price_num'] = pd.to_numeric(df['discounted_price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['actual_price_num'] = pd.to_numeric(df['actual_price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['discount_pct_num'] = pd.to_numeric(df['discount_percentage'].astype(str).str.replace('%', '', regex=True), errors='coerce')
+    df['rating_count_num'] = pd.to_numeric(df['rating_count'].astype(str).str.replace(',', '', regex=True), errors='coerce')
+    df['rating_num'] = pd.to_numeric(df['rating'], errors='coerce')
+    df['revenue_proxy'] = df['discounted_price_num'] * df['rating_count_num']
+    if 'parsed_date' not in df.columns:
+        df['parsed_date'] = pd.NaT
+    if 'country' not in df.columns:
+        df['country'] = 'Unknown'
+    if 'latitude' not in df.columns:
+        df['latitude'] = np.nan
+    if 'longitude' not in df.columns:
+        df['longitude'] = np.nan
+    return df
+
+df = load_data()
+
+cats = st.sidebar.multiselect('Category', df['category'].unique(), default=df['category'].unique()[:5])
+rat_min, rat_max = st.sidebar.slider('Rating', 0.0, 5.0, (0.0, 5.0), 0.1)
+p_min = float(df['discounted_price_num'].min())
+p_max = float(df['discounted_price_num'].max())
+pri_min, pri_max = st.sidebar.slider('Discounted Price', p_min, p_max, (p_min, p_max))
+
+data = df[
+    (df['category'].isin(cats)) &
+    (df['rating_num'] >= rat_min) &
+    (df['rating_num'] <= rat_max) &
+    (df['discounted_price_num'] >= pri_min) &
+    (df['discounted_price_num'] <= pri_max)
+]
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric('Products', len(data))
+k2.metric('Avg Rating', round(data['rating_num'].mean(), 2) if not data.empty else 0.0)
+k3.metric('Avg Price', round(data['discounted_price_num'].mean(), 2) if not data.empty else 0.0)
+k4.metric('Avg Revenue Proxy', round(data['revenue_proxy'].mean(), 2) if not data.empty else 0.0)
+
+c1, c2 = st.columns(2)
+top_cats = data['category'].value_counts().head(10).reset_index()
+top_cats.columns = ['category', 'count']
+fig1 = px.bar(top_cats, x='category', y='count', title='Top 10 Categories')
+c1.plotly_chart(fig1, use_container_width=True)
+
+cat_val = data.groupby('category')['discounted_price_num'].sum().reset_index().sort_values('discounted_price_num', ascending=False).head(10)
+fig2 = px.bar(cat_val, x='category', y='discounted_price_num', title='Top 10 Categories by Value')
+c2.plotly_chart(fig2, use_container_width=True)
+
+c3, c4 = st.columns(2)
+fig3 = px.histogram(data, x='rating_num', nbins=10, title='Rating Distribution')
+c3.plotly_chart(fig3, use_container_width=True)
+
+fig4 = px.scatter(data, x='actual_price_num', y='discounted_price_num', color='rating_num', title='Actual vs Discounted Price', opacity=0.6)
+c4.plotly_chart(fig4, use_container_width=True)
+
+c5, c6 = st.columns(2)
+nums = ['actual_price_num', 'discounted_price_num', 'discount_pct_num', 'rating_num', 'rating_count_num']
+corr = data[nums].corr()
+fig5 = px.imshow(corr, text_auto=True, aspect='auto', title='Correlation Matrix')
+c5.plotly_chart(fig5, use_container_width=True)
+
+if not data[['latitude', 'longitude']].dropna().empty:
+    fig6 = px.scatter_geo(data.dropna(subset=['latitude', 'longitude']), lat='latitude', lon='longitude', color='rating_num', title='Geographic Distribution')
+else:
+    geo = data['country'].value_counts().head(10).reset_index()
+    geo.columns = ['country', 'count']
+    fig6 = px.bar(geo, x='country', y='count', title='Geographic Distribution (Top Countries)')
+c6.plotly_chart(fig6, use_container_width=True)
+
+st.markdown('---')
+st.subheader('Data Preview')
+st.dataframe(data)
+
+st.sidebar.markdown('---')
+st.sidebar.caption('Data Source: Amazon Dataset')
+if st.sidebar.button('Refresh'):
+    st.rerun()
+
+st.markdown('---')
+st.caption('Data Source: Amazon Dataset | Built with Streamlit')
+
+--- FILE: pages/2_sales_revenue.py ---
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+
+@st.cache_data
+def load_data():
+    file_path = '/Users/hassanmulla/Downloads/NOVA_Phase2/Test/amazon.csv'
+    df = pd.read_csv(file_path)
+    df['discounted_price_num'] = pd.to_numeric(df['discounted_price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['actual_price_num'] = pd.to_numeric(df['actual_price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['discount_pct_num'] = pd.to_numeric(df['discount_percentage'].astype(str).str.replace('%', '', regex=True), errors='coerce')
+    df['rating_count_num'] = pd.to_numeric(df['rating_count'].astype(str).str.replace(',', '', regex=True), errors='coerce')
+    df['rating_num'] = pd.to_numeric(df['rating'], errors='coerce')
+    df['revenue_proxy'] = df['discounted_price_num'] * df['rating_count_num']
+    date_candidates = ['date', 'Date', 'timestamp', 'Timestamp', 'sales_date']
+    for col in date_candidates:
+        if col in df.columns:
+            df['parsed_date'] = pd.to_datetime(df[col], errors='coerce')
+            break
+    else:
+        df['parsed_date'] = pd.NaT
+    if 'country' not in df.columns:
+        df['country'] = 'Unknown'
+    if 'latitude' not in df.columns:
+        df['latitude'] = np.nan
+    if 'longitude' not in df.columns:
+        df['longitude'] = np.nan
+    return df
+
+df = load_data()
+
+cats = st.sidebar.multiselect("Category", df['category'].dropna().unique(), default=df['category'].dropna().unique()[:5])
+rat_min, rat_max = st.sidebar.slider("Rating", 0.0, 5.0, (0.0, 5.0), 0.1)
+p_min = float(df['discounted_price_num'].min())
+p_max = float(df['discounted_price_num'].max())
+pri_min, pri_max = st.sidebar.slider("Discounted Price", p_min, p_max, (p_min, p_max))
+
+mask = (df['category'].isin(cats)) & (df['rating_num'] >= rat_min) & (df['rating_num'] <= rat_max) & (df['discounted_price_num'] >= pri_min) & (df['discounted_price_num'] <= pri_max)
+filtered = df[mask]
+
+st.title("Sales & Revenue")
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Total Revenue", f"${filtered['revenue_proxy'].sum():,.2f}")
+k2.metric("Sales Volume", f"{len(filtered):,}")
+k3.metric("Avg Rating", f"{filtered['rating_num'].mean():.2f}")
+k4.metric("Avg Discount %", f"{filtered['discount_pct_num'].mean():.2f}")
+
+c1, c2 = st.columns(2)
+
+ts_df = filtered.dropna(subset=['parsed_date']).copy()
+if not ts_df.empty:
+    ts_df['period'] = ts_df['parsed_date'].dt.to_period('M').dt.to_timestamp()
+    ts_group = ts_df.groupby('period')['revenue_proxy'].sum().reset_index()
+    fig1 = px.line(ts_group, x='period', y='revenue_proxy', title="Revenue Over Time")
+else:
+    fig1 = px.line(title="Revenue Over Time (No Date Data)")
+c1.plotly_chart(fig1, use_container_width=True)
+
+cat_rev = filtered.groupby('category')['revenue_proxy'].sum().reset_index().sort_values('revenue_proxy', ascending=False).head(10)
+fig2 = px.bar(cat_rev, x='category', y='revenue_proxy', title="Top Categories by Revenue")
+c2.plotly_chart(fig2, use_container_width=True)
+
+c3, c4 = st.columns(2)
+
+geo_map_data = filtered.dropna(subset=['latitude', 'longitude'])
+if not geo_map_data.empty:
+    fig3 = px.scatter_geo(geo_map_data, lat='latitude', lon='longitude', color='rating_num', title="Geographic Distribution")
+else:
+    geo = filtered['country'].value_counts().head(10).reset_index()
+    geo.columns = ['country', 'count']
+    fig3 = px.bar(geo, x='country', y='count', title="Geographic Distribution (Top Countries)")
+c3.plotly_chart(fig3, use_container_width=True)
+
+fig4 = px.histogram(filtered, x='discount_pct_num', nbins=20, title="Discount Distribution")
+c4.plotly_chart(fig4, use_container_width=True)
+
+st.markdown("---")
+st.subheader("Data Preview")
+st.dataframe(filtered)
+
+st.sidebar.markdown("---")
+st.sidebar.caption("Data Source: Amazon Dataset")
+if st.sidebar.button("Refresh"):
+    st.rerun()
+
+st.markdown("---")
+st.caption("Data Source: Amazon Dataset | Built with Streamlit")
+
+--- FILE: pages/3_reviews.py ---
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+
+@st.cache_data
+def load_data():
+    file_path = '/Users/hassanmulla/Downloads/NOVA_Phase2/Test/amazon.csv'
+    df = pd.read_csv(file_path)
+    df['discounted_price_num'] = pd.to_numeric(df['discounted_price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['actual_price_num'] = pd.to_numeric(df['actual_price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['discount_pct_num'] = pd.to_numeric(df['discount_percentage'].astype(str).str.replace('%', '', regex=True), errors='coerce')
+    df['rating_count_num'] = pd.to_numeric(df['rating_count'].astype(str).str.replace(',', '', regex=True), errors='coerce')
+    df['rating_num'] = pd.to_numeric(df['rating'], errors='coerce')
+    df['revenue_proxy'] = df['discounted_price_num'] * df['rating_count_num']
+    date_candidates = ['date', 'Date', 'timestamp', 'Timestamp', 'sales_date']
+    for col in date_candidates:
+        if col in df.columns:
+            df['parsed_date'] = pd.to_datetime(df[col], errors='coerce')
+            break
+    else:
+        df['parsed_date'] = pd.NaT
+    if 'country' not in df.columns:
+        df['country'] = 'Unknown'
+    if 'latitude' not in df.columns:
+        df['latitude'] = np.nan
+    if 'longitude' not in df.columns:
+        df['longitude'] = np.nan
+    return df
+
+df = load_data()
+
+cats = st.sidebar.multiselect("Category", df['category'].dropna().unique(), default=df['category'].dropna().unique()[:5])
+rat_min, rat_max = st.sidebar.slider("Rating", 0.0, 5.0, (0.0, 5.0), 0.1)
+p_min = float(df['discounted_price_num'].min())
+p_max = float(df['discounted_price_num'].max())
+pri_min, pri_max = st.sidebar.slider("Discounted Price", p_min, p_max, (p_min, p_max))
+
+data = df[(df['category'].isin(cats)) & (df['rating_num'] >= rat_min) & (df['rating_num'] <= rat_max) & (df['discounted_price_num'] >= pri_min) & (df['discounted_price_num'] <= pri_max)]
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Avg Rating", f"{data['rating_num'].mean():.2f}")
+k2.metric("Total Reviews", f"{data['rating_count_num'].sum():,.0f}")
+k3.metric("Products", f"{len(data):,}")
+k4.metric("Avg Review Count", f"{data['rating_count_num'].mean():.0f}")
+
+c1, c2 = st.columns(2)
+avg_rat = data.groupby('category')['rating_num'].mean().reset_index().sort_values('rating_num', ascending=False).head(10)
+fig1 = px.bar(avg_rat, x='category', y='rating_num', title="Average Rating by Category (Top 10)")
+c1.plotly_chart(fig1, use_container_width=True)
+
+rev_vol = data.groupby('category')['rating_count_num'].sum().reset_index().sort_values('rating_count_num', ascending=False).head(10)
+fig2 = px.bar(rev_vol, x='category', y='rating_count_num', title="Review Volume by Category (Top 10)")
+c2.plotly_chart(fig2, use_container_width=True)
+
+c3, c4 = st.columns(2)
+fig3 = px.scatter(data, x='rating_num', y='rating_count_num', color='category', title="Rating vs Review Count", opacity=0.6, log_y=True)
+c3.plotly_chart(fig3, use_container_width=True)
+
+fig4 = px.scatter(data, x='discount_pct_num', y='rating_num', title="Discount % vs Rating", opacity=0.6)
+c4.plotly_chart(fig4, use_container_width=True)
+
+c5, c6 = st.columns(2)
+fig5 = px.histogram(data, x='rating_num', nbins=10, title="Rating Distribution")
+c5.plotly_chart(fig5, use_container_width=True)
+
+fig6 = px.histogram(data, x='rating_count_num', nbins=20, title="Review Count Distribution", log_y=True)
+c6.plotly_chart(fig6, use_container_width=True)
+
+--- FILE: pages/4_categories.py ---
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+
+@st.cache_data
+def load_data():
+    file_path = '/Users/hassanmulla/Downloads/NOVA_Phase2/Test/amazon.csv'
+    df = pd.read_csv(file_path)
+    df['discounted_price_num'] = pd.to_numeric(df['discounted_price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['actual_price_num'] = pd.to_numeric(df['actual_price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['discount_pct_num'] = pd.to_numeric(df['discount_percentage'].astype(str).str.replace('%', '', regex=True), errors='coerce')
+    df['rating_count_num'] = pd.to_numeric(df['rating_count'].astype(str).str.replace(',', '', regex=True), errors='coerce')
+    df['rating_num'] = pd.to_numeric(df['rating'], errors='coerce')
+    df['revenue_proxy'] = df['discounted_price_num'] * df['rating_count_num']
+    date_candidates = ['date', 'Date', 'timestamp', 'Timestamp', 'sales_date']
+    for col in date_candidates:
+        if col in df.columns:
+            df['parsed_date'] = pd.to_datetime(df[col], errors='coerce')
+            break
+    else:
+        df['parsed_date'] = pd.NaT
+    if 'country' not in df.columns:
+        df['country'] = 'Unknown'
+    if 'latitude' not in df.columns:
+        df['latitude'] = np.nan
+    if 'longitude' not in df.columns:
+        df['longitude'] = np.nan
+    return df
+
+df = load_data()
+
+cats = st.sidebar.multiselect("Category", df['category'].dropna().unique(), default=df['category'].dropna().unique()[:5])
+rat_min, rat_max = st.sidebar.slider("Rating", 0.0, 5.0, (0.0, 5.0), 0.1)
+p_min = float(df['discounted_price_num'].min())
+p_max = float(df['discounted_price_num'].max())
+pri_min, pri_max = st.sidebar.slider("Discounted Price", p_min, p_max, (p_min, p_max))
+
+data = df[
+    (df['category'].isin(cats)) &
+    (df['rating_num'] >= rat_min) &
+    (df['rating_num'] <= rat_max) &
+    (df['discounted_price_num'] >= pri_min) &
+    (df['discounted_price_num'] <= pri_max)
+]
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Categories", data['category'].nunique())
+k2.metric("Products", len(data))
+k3.metric("Avg Price", f"{data['discounted_price_num'].mean():.2f}")
+k4.metric("Avg Rating", f"{data['rating_num'].mean():.2f}")
+
+c1, c2 = st.columns(2)
+cat_counts = data['category'].value_counts().head(15).reset_index()
+cat_counts.columns = ['category', 'count']
+fig1 = px.bar(cat_counts, x='category', y='count', title="Products per Category (Top 15)")
+c1.plotly_chart(fig1, use_container_width=True)
+
+cat_price = data.groupby('category')['discounted_price_num'].mean().reset_index().sort_values('discounted_price_num', ascending=False).head(15)
+fig2 = px.bar(cat_price, x='category', y='discounted_price_num', title="Average Price by Category (Top 15)")
+c2.plotly_chart(fig2, use_container_width=True)
+
+c3, c4 = st.columns(2)
+cat_discount = data.groupby('category')['discount_pct_num'].mean().reset_index().sort_values('discount_pct_num', ascending=False).head(15)
+fig3 = px.bar(cat_discount, x='category', y='discount_pct_num', title="Average Discount % by Category (Top 15)")
+c3.plotly_chart(fig3, use_container_width=True)
+
+cat_rev = data.groupby('category')['revenue_proxy'].sum().reset_index().sort_values('revenue_proxy', ascending=False).head(15)
+fig4 = px.bar(cat_rev, x='category', y='revenue_proxy', title="Revenue Proxy by Category (Top 15)")
+c4.plotly_chart(fig4, use_container_width=True)
+
+c5, c6 = st.columns(2)
+cat_rating = data.groupby('category')['rating_num'].mean().reset_index().sort_values('rating_num', ascending=False).head(15)
+fig5 = px.bar(cat_rating, x='category', y='rating_num', title="Average Rating by Category (Top 15)")
+c5.plotly_chart(fig5, use_container_width=True)
+
+fig6 = px.box(data, x='category', y='discounted_price_num', title="Price Distribution by Category")
+c6.plotly_chart(fig6, use_container_width=True)
+
+st.markdown("---")
+st.subheader("Category Summary")
+summary = data.groupby('category').agg(
+    products=('discounted_price_num', 'count'),
+    avg_price=('discounted_price_num', 'mean'),
+    avg_discount=('discount_pct_num', 'mean'),
+    avg_rating=('rating_num', 'mean'),
+    total_revenue=('revenue_proxy', 'sum')
+).sort_values('total_revenue', ascending=False)
+st.dataframe(summary, use_container_width=True)
+
+st.markdown("---")
+st.caption("Data Source: Amazon Dataset | Built with Streamlit")
+
+--- FILE: pages/5_geographic.py ---
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+
+st.set_page_config(page_title="Geographic", layout="wide")
+
+@st.cache_data
+def load_data():
+    file_path = '/Users/hassanmulla/Downloads/NOVA_Phase2/Test/amazon.csv'
+    df = pd.read_csv(file_path)
+    df['discounted_price_num'] = pd.to_numeric(df['discounted_price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['actual_price_num'] = pd.to_numeric(df['actual_price'].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce')
+    df['discount_pct_num'] = pd.to_numeric(df['discount_percentage'].astype(str).str.replace('%', '', regex=True), errors='coerce')
+    df['rating_count_num'] = pd.to_numeric(df['rating_count'].astype(str).str.replace(',', '', regex=True), errors='coerce')
+    df['rating_num'] = pd.to_numeric(df['rating'], errors='coerce')
+    df['revenue_proxy'] = df['discounted_price_num'] * df['rating_count_num']
+    date_candidates = ['date', 'Date', 'timestamp', 'Timestamp', 'sales_date']
+    for col in date_candidates:
+        if col in df.columns:
+            df['parsed_date'] = pd.to_datetime(df[col], errors='coerce')
+            break
+    else:
+        df['parsed_date'] = pd.NaT
+    if 'country' not in df.columns:
+        df['country'] = 'Unknown'
+    if 'latitude' not in df.columns:
+        df['latitude'] = np.nan
+    if 'longitude' not in df.columns:
+        df['longitude'] = np.nan
+    return df
+
+df = load_data()
+
+cats = st.sidebar.multiselect("Category", df['category'].dropna().unique(), default=df['category'].dropna().unique()[:5])
+rat_min, rat_max = st.sidebar.slider("Rating", 0.0, 5.0, (0.0, 5.0), 0.1)
+p_min = float(df['discounted_price_num'].min())
+p_max = float(df['discounted_price_num'].max())
+pri_min, pri_max = st.sidebar.slider("Discounted Price", p_min, p_max, (p_min, p_max))
+
+data = df[(df['category'].isin(cats)) & (df['rating_num'] >= rat_min) & (df['rating_num'] <= rat_max) & (df['discounted_price_num'] >= pri_min) & (df['discounted_price_num'] <= pri_max)]
+
+st.title("Geographic")
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Products", len(data))
+k2.metric("Avg Rating", round(data['rating_num'].mean(), 2) if not data.empty else 0.0)
+k3.metric("Avg Price", round(data['discounted_price_num'].mean(), 2) if not data.empty else 0.0)
+k4.metric("Revenue Proxy", round(data['revenue_proxy'].sum(), 2) if not data.empty else 0.0)
+
+c1, c2 = st.columns(2)
+
+map_data = data.dropna(subset=['latitude', 'longitude'])
+if not map_data.empty:
+    fig1 = px.scatter_geo(map_data, lat='latitude', lon='longitude', color='rating_num', size='discounted_price_num', projection='natural earth', title="Product Locations")
+else:
+    geo = data['country'].value_counts().head(10).reset_index()
+    geo.columns = ['country', 'count']
+    fig1 = px.bar(geo, x='country', y='count', title="Top Countries by Product Count")
+c1.plotly_chart(fig1, use_container_width=True)
+
+country_rev = data.groupby('country')['revenue_proxy'].sum().reset_index().sort_values('revenue_proxy', ascending=False).head(10)
+fig2 = px.bar(country_rev, x='country', y='revenue_proxy', title="Revenue Proxy by Country (Top 10)")
+c2.plotly_chart(fig2, use_container_width=True)
+
+c3, c4 = st.columns(2)
+
+country_count = data['country'].value_counts().head(10).reset_index()
+country_count.columns = ['country', 'count']
+fig3 = px.bar(country_count, x='country', y='count', title="Product Count by Country (Top 10)")
+c3.plotly_chart(fig3, use_container_width=True)
+
+country_avg = data.groupby('country')['rating_num'].mean().reset_index().sort_values('rating_num', ascending=False).head(10)
+fig4 = px.bar(country_avg, x='country', y='rating_num', title="Average Rating by Country (Top 10)")
+c4.plotly_chart(fig4, use_container_width=True)

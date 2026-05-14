@@ -1,0 +1,44 @@
+[
+  {
+    "month": "Jan",
+    "revenue": 1200,
+    "expenses": 900,
+    "users": 50,
+    "profit": 300
+  },
+  {
+    "month": "Feb",
+    "revenue": 1800,
+    "expenses": 1100,
+    "users": 80,
+    "profit": 700
+  },
+  {
+    "month": "Mar",
+    "revenue": 2500,
+    "expenses": 1500,
+    "users": 120,
+    "profit": 1000
+  },
+  {
+    "month": "Apr",
+    "revenue": 3200,
+    "expenses": 1700,
+    "users": 170,
+    "profit": 1500
+  },
+  {
+    "month": "May",
+    "revenue": 4100,
+    "expenses": 2100,
+    "users": 240,
+    "profit": 2000
+  },
+  {
+    "month": "Jun",
+    "revenue": 5300,
+    "expenses": 2600,
+    "users": 320,
+    "profit": 2700
+  }
+]
