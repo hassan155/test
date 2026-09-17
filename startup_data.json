@@ -1,44 +1,49 @@
 [
   {
-    "month": "Jan",
-    "revenue": 1200,
-    "expenses": 900,
-    "users": 50,
-    "profit": 300
+    "Month": "Jan",
+    "Revenue": 1200,
+    "Expenses": 900,
+    "Users": 50,
+    "Profit": 300
   },
   {
-    "month": "Feb",
-    "revenue": 1800,
-    "expenses": 1100,
-    "users": 80,
-    "profit": 700
+    "Month": "Feb",
+    "Revenue": 1800,
+    "Expenses": 1100,
+    "Users": 80,
+    "Profit": 700,
+    "GrowthRate": 50
   },
   {
-    "month": "Mar",
-    "revenue": 2500,
-    "expenses": 1500,
-    "users": 120,
-    "profit": 1000
+    "Month": "Mar",
+    "Revenue": 2500,
+    "Expenses": 1500,
+    "Users": 120,
+    "Profit": 1000,
+    "GrowthRate": 38.8889
   },
   {
-    "month": "Apr",
-    "revenue": 3200,
-    "expenses": 1700,
-    "users": 170,
-    "profit": 1500
+    "Month": "Apr",
+    "Revenue": 3200,
+    "Expenses": 1700,
+    "Users": 170,
+    "Profit": 1500,
+    "GrowthRate": 28
   },
   {
-    "month": "May",
-    "revenue": 4100,
-    "expenses": 2100,
-    "users": 240,
-    "profit": 2000
+    "Month": "May",
+    "Revenue": 4100,
+    "Expenses": 2100,
+    "Users": 240,
+    "Profit": 2000,
+    "GrowthRate": 28.125
   },
   {
-    "month": "Jun",
-    "revenue": 5300,
-    "expenses": 2600,
-    "users": 320,
-    "profit": 2700
+    "Month": "Jun",
+    "Revenue": 5300,
+    "Expenses": 2600,
+    "Users": 320,
+    "Profit": 2700,
+    "GrowthRate": 29.2683
   }
 ]
